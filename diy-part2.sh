@@ -20,10 +20,9 @@
 #sed -i 's/OpenWrt/P3TERX-Router/g' package/base-files/files/bin/config_generate
 #rm -rf feeds/luci/themes/luci-theme-argon
 #rm -rf feeds/luci/themes/luci-theme-argon-mod
-#rm -rf feeds/luci/applications/luci-app-argon-config
+rm -rf feeds/luci/applications/luci-app-argon-config
 #rm -rf feeds/packages/lang/golang
 
 #git clone https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
-#git clone https://github.com/jerrykuku/luci-app-argon-config.git package/luci-app-argon-config
-#git clone https://github.com/chenmozhijin/luci-app-socat package/luci-app-socat
+git clone https://github.com/jerrykuku/luci-app-argon-config.git package/luci-app-argon-config
 #git clone https://github.com/sbwml/packages_lang_golang -b 23.x feeds/packages/lang/golang
