@@ -13,6 +13,7 @@
 # Modify default IP
 sed -i 's/192.168.1.1/192.168.10.1/g' package/base-files/files/bin/config_generate
 sed -i 's/192.168.1.1/192.168.10.1/g' package/base-files/luci2/bin/config_generate
+sed -i 's/reg = <0x0 0x4ab00000 0x0 0x[0-9a-f]\+>/reg = <0x0 0x4ab00000 0x0 0x01000000>/' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6018-512m.dtsi
 
 # Modify default theme
 #sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' feeds/luci/collections/luci/Makefile
@@ -21,10 +22,11 @@ sed -i 's/192.168.1.1/192.168.10.1/g' package/base-files/luci2/bin/config_genera
 #sed -i 's/OpenWrt/P3TERX-Router/g' package/base-files/files/bin/config_generate
 #rm -rf feeds/luci/themes/luci-theme-argon
 #rm -rf feeds/luci/themes/luci-theme-argon-mod
-rm -rf feeds/luci/applications/luci-app-argon-config
+#rm -rf feeds/luci/applications/luci-app-argon-config
 rm -rf feeds/packages/lang/golang
 
 #git clone https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
 #git clone https://github.com/destan19/OpenAppFilter.git package/OpenAppFilter
-git clone https://github.com/jerrykuku/luci-app-argon-config.git package/luci-app-argon-config
+#git clone https://github.com/jerrykuku/luci-app-argon-config.git package/luci-app-argon-config
 git clone https://github.com/sbwml/packages_lang_golang -b 25.x feeds/packages/lang/golang
+git clone https://github.com/chenmozhijin/luci-app-socat package/luci-app-socat
