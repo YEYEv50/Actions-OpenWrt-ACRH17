@@ -27,3 +27,4 @@ git clone https://github.com/eamonxg/luci-theme-aurora feeds/luci/themes/luci-th
 git clone https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
 git clone https://github.com/jerrykuku/luci-app-argon-config.git package/luci-app-argon-config
 git clone https://github.com/sbwml/packages_lang_golang -b 25.x feeds/packages/lang/golang
+git clone https://github.com/chenmozhijin/luci-app-socat package/luci-app-socat
