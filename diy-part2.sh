@@ -24,6 +24,7 @@ sed -i 's/reg = <0x0 0x4ab00000 0x0 0x[0-9a-f]\+>/reg = <0x0 0x4ab00000 0x0 0x01
 #rm -rf feeds/luci/themes/luci-theme-argon
 #rm -rf feeds/luci/themes/luci-theme-argon-mod
 #rm -rf feeds/luci/applications/luci-app-argon-config
+rm -rf feeds/luci/applications/luci-app-wol
 rm -rf feeds/packages/lang/golang
 
 git clone https://github.com/eamonxg/luci-theme-aurora feeds/luci/themes/luci-theme-aurora
@@ -31,3 +32,4 @@ git clone https://github.com/eamonxg/luci-theme-aurora feeds/luci/themes/luci-th
 git clone https://github.com/jerrykuku/luci-app-argon-config.git package/luci-app-argon-config
 git clone https://github.com/sbwml/packages_lang_golang -b 25.x feeds/packages/lang/golang
 #git clone https://github.com/chenmozhijin/luci-app-socat package/luci-app-socat
+git clone https://github.com/bfmen/luci-app-wolplus feeds/luci/applications/luci-app-wolplus
