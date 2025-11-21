@@ -13,7 +13,7 @@
 # Modify default IP
 sed -i 's/192.168.1.1/192.168.10.1/g' package/base-files/files/bin/config_generate
 sed -i 's/reg = <0x0 0x4ab00000 0x0 0x[0-9a-f]\+>/reg = <0x0 0x4ab00000 0x0 0x01000000>/' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6018-512m.dtsi
-sed -i 's/reg = <0x0 0x4ab00000 0x0 0x[0-9a-f]\+>/reg = <0x0 0x4ab00000 0x0 0x01000000>/' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6018-nowifi.dtsi
+sed -i 's/reg = <0x0 0x4ab00000 0x0 0x[0-9a-f]\+>/reg = <0x0 0x4ab00000 0x0 0x01000000>/' target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6018-256m.dtsi
 
 # Modify default theme
 #sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' feeds/luci/collections/luci/Makefile
@@ -27,9 +27,9 @@ rm -rf feeds/luci/applications/luci-app-wol
 rm -rf feeds/packages/lang/golang
 
 git clone https://github.com/eamonxg/luci-theme-aurora feeds/luci/themes/luci-theme-aurora
-#git clone https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
-#git clone https://github.com/jerrykuku/luci-app-argon-config.git package/luci-app-argon-config
+git clone https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
+git clone https://github.com/jerrykuku/luci-app-argon-config.git package/luci-app-argon-config
 git clone https://github.com/sbwml/packages_lang_golang -b 25.x feeds/packages/lang/golang
-git clone https://github.com/chenmozhijin/luci-app-socat package/luci-app-socat
+#git clone https://github.com/chenmozhijin/luci-app-socat package/luci-app-socat
 git clone https://github.com/bfmen/luci-app-wolplus feeds/luci/applications/luci-app-wolplus
 git clone https://github.com/EasyTier/luci-app-easytier package/luci-app-easytier
