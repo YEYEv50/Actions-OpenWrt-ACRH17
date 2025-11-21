@@ -13,8 +13,8 @@
 name: Update Checker
 
 env:
-  REPO_URL: https://github.com/LiBwrt/openwrt-6.x
-  REPO_BRANCH: k6.12-nss
+  REPO_URL: https://github.com/Lienol/openwrt
+  REPO_BRANCH: 24.10
 
 on:
   workflow_dispatch:
