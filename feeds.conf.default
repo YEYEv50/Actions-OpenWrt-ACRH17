@@ -2,8 +2,6 @@ src-git passwall_packages https://github.com/xiaorouji/openwrt-passwall-packages
 src-git passwall_luci https://github.com/xiaorouji/openwrt-passwall.git;main
 src-git passwall2_luci https://github.com/xiaorouji/openwrt-passwall2.git;main
 src-git lucky https://github.com/gdy666/luci-app-lucky.git
-src-git nss_packages https://github.com/qosmio/nss-packages.git
-src-git sqm_scripts_nss https://github.com/qosmio/sqm-scripts-nss.git
 src-git packages https://github.com/coolsnowwolf/packages
 #src-git luci https://github.com/coolsnowwolf/luci.git
 src-git luci https://github.com/coolsnowwolf/luci.git;openwrt-23.05
