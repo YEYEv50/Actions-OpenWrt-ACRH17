@@ -36,3 +36,4 @@ git clone https://github.com/jerrykuku/luci-app-argon-config.git package/luci-ap
 git clone https://github.com/sbwml/packages_lang_golang -b 25.x feeds/packages/lang/golang
 #git clone https://github.com/chenmozhijin/luci-app-socat package/luci-app-socat
 git clone https://github.com/bfmen/luci-app-wolplus feeds/luci/applications/luci-app-wolplus
+git clone https://github.com/EasyTier/luci-app-easytier package/luci-app-easytier
