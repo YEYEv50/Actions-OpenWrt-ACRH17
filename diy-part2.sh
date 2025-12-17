@@ -28,8 +28,8 @@ rm -rf feeds/luci/applications/luci-app-wol
 rm -rf feeds/luci/themes/luci-theme-design
 rm -rf feeds/packages/lang/golang
 
-git clone https://github.com/gngpp/luci-app-design-config.git feeds/luci/applications/luci-app-design-config
-git clone https://github.com/gngpp/luci-theme-design.git  feeds/luci/themes/luci-theme-design
+git clone https://github.com/0x676e67/luci-theme-design.git  feeds/luci/themes/luci-theme-design
+git clone https://github.com/0x676e67/luci-app-design-config.git feeds/luci/applications/luci-app-design-config
 git clone https://github.com/eamonxg/luci-theme-aurora feeds/luci/themes/luci-theme-aurora
 #git clone https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
 git clone https://github.com/jerrykuku/luci-app-argon-config.git package/luci-app-argon-config
