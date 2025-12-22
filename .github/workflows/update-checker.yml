@@ -14,7 +14,7 @@ name: Update Checker
 
 env:
   REPO_URL: https://github.com/LiBwrt/openwrt-6.x
-  REPO_BRANCH: k6.12-nss
+  REPO_BRANCH: main-nss
 
 on:
   workflow_dispatch:
