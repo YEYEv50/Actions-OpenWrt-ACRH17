@@ -28,7 +28,7 @@ rm -rf feeds/luci/applications/luci-app-wol
 #rm -rf feeds/luci/themes/luci-theme-design
 #rm -rf feeds/packages/lang/golang
 
-git clone https://github.com/0x676e67/luci-theme-design.git  package/luci-theme-design
+#git clone https://github.com/0x676e67/luci-theme-design.git  package/luci-theme-design
 git clone https://github.com/0x676e67/luci-app-design-config.git package/luci-app-design-config
 git clone https://github.com/eamonxg/luci-theme-aurora package/luci-theme-aurora
 git clone https://github.com/eamonxg/luci-app-aurora-config package/luci-app-aurora-config
