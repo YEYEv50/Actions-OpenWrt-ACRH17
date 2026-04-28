@@ -21,7 +21,7 @@ sed -i 's/192.168.1.1/192.168.10.1/g' package/base-files/files/bin/config_genera
 #rm -rf feeds/luci/themes/luci-theme-argon
 #rm -rf feeds/luci/themes/luci-theme-argon-mod
 #rm -rf feeds/luci/applications/luci-app-argon-config
-rm -rf feeds/packages/lang/golang
+#rm -rf feeds/packages/lang/golang
 rm -rf feeds/luci/applications/luci-app-wol
 
 
