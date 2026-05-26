@@ -35,4 +35,5 @@ git clone https://github.com/eamonxg/luci-app-aurora-config package/luci-app-aur
 git clone https://github.com/chenmozhijin/luci-app-socat package/luci-app-socat
 git clone https://github.com/bfmen/luci-app-wolplus package/luci-app-wolplus
 git clone https://github.com/EasyTier/luci-app-easytier.git package/luci-app-easytier
+git clone https://github.com/sirpdboy/luci-app-wizard package/luci-app-wizard
 #git clone https://github.com/huchd0/luci-app-netwiz package/luci-app-netwiz
