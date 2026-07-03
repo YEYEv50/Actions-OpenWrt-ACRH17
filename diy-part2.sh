@@ -36,4 +36,6 @@ git clone https://github.com/eamonxg/luci-app-aurora-config package/luci-app-aur
 #git clone https://github.com/sbwml/packages_lang_golang -b 26.x feeds/packages/lang/golang
 git clone https://github.com/chenmozhijin/luci-app-socat package/luci-app-socat
 git clone https://github.com/bfmen/luci-app-wolplus package/luci-app-wolplus
+#git clone https://github.com/timsaya/openwrt-bandix package/openwrt-bandix
+#git clone https://github.com/timsaya/luci-app-bandix package/luci-app-bandix
 #git clone https://github.com/EasyTier/luci-app-easytier.git package/luci-app-easytier
