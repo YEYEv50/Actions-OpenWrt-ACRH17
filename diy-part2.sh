@@ -25,6 +25,10 @@ sed -i 's/reg = <0x0 0x4ab00000 0x0 0x[0-9a-f]\+>/reg = <0x0 0x4ab00000 0x0 0x01
 #rm -rf feeds/luci/applications/luci-app-argon-config
 #rm -rf feeds/luci/applications/luci-app-wol
 rm -rf feeds/luci/applications/luci-app-passwall
+rm -rf feeds/luci/applications/luci-app-dae
+rm -rf feeds/luci/applications/luci-app-daed
+rm -rf feeds/packages/net/dae
+rm -rf feeds/packages/net/daed
 #rm -rf feeds/packages/lang/golang
 
 #git clone https://github.com/0x676e67/luci-theme-design.git  package/luci-theme-design
@@ -39,3 +43,4 @@ git clone https://github.com/bfmen/luci-app-wolplus package/luci-app-wolplus
 #git clone https://github.com/timsaya/openwrt-bandix package/openwrt-bandix
 #git clone https://github.com/timsaya/luci-app-bandix package/luci-app-bandix
 #git clone https://github.com/EasyTier/luci-app-easytier.git package/luci-app-easytier
+git clone https://github.com/kenzok8/openwrt-daede package/openwrt-daede
