@@ -44,3 +44,4 @@ git clone https://github.com/bfmen/luci-app-wolplus package/luci-app-wolplus
 #git clone https://github.com/timsaya/luci-app-bandix package/luci-app-bandix
 #git clone https://github.com/EasyTier/luci-app-easytier.git package/luci-app-easytier
 git clone https://github.com/kenzok8/openwrt-daede package/openwrt-daede
+git clone https://github.com/kenzok8/openwrt-clashoo package/openwrt-clashoo
