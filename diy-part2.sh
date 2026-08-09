@@ -33,6 +33,7 @@ rm -rf feeds/packages/net/daed
 
 #git clone https://github.com/0x676e67/luci-theme-design.git  package/luci-theme-design
 #git clone https://github.com/0x676e67/luci-app-design-config.git package/luci-app-design-config
+git clone https://github.com/xylz0928/luci-theme-liquid.git package/luci-theme-liquid
 git clone https://github.com/eamonxg/luci-theme-aurora package/luci-theme-aurora
 git clone https://github.com/eamonxg/luci-app-aurora-config package/luci-app-aurora-config
 #git clone https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
