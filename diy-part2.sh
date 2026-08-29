@@ -40,6 +40,7 @@ git clone https://github.com/eamonxg/luci-app-aurora-config package/luci-app-aur
 git clone https://github.com/chenmozhijin/luci-app-socat package/luci-app-socat
 git clone https://github.com/bfmen/luci-app-wolplus package/luci-app-wolplus
 git clone https://github.com/immortalwrt/homeproxy package/luci-app-homeproxy
+#git clone https://github.com/szwjp/homeproxy package/szwjp-homeproxy
 git clone https://github.com/whzhni1/luci-app-harbor-file package/luci-app-harbor-file
 #git clone https://github.com/timsaya/openwrt-bandix package/openwrt-bandix
 #git clone https://github.com/timsaya/luci-app-bandix package/luci-app-bandix
