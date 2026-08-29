@@ -25,7 +25,7 @@ sed -i 's/reg = <0x0 0x4ab00000 0x0 0x[0-9a-f]\+>/reg = <0x0 0x4ab00000 0x0 0x01
 #rm -rf feeds/luci/applications/luci-app-argon-config
 #rm -rf feeds/luci/applications/luci-app-wol
 rm -rf feeds/luci/applications/luci-app-passwall
-rm -rf feeds/luci/applications/luci-app-homeproxy
+#rm -rf feeds/luci/applications/luci-app-homeproxy
 #rm -rf feeds/packages/lang/golang
 
 
@@ -39,7 +39,7 @@ git clone https://github.com/eamonxg/luci-app-aurora-config package/luci-app-aur
 #git clone https://github.com/sbwml/packages_lang_golang -b 26.x feeds/packages/lang/golang
 git clone https://github.com/chenmozhijin/luci-app-socat package/luci-app-socat
 git clone https://github.com/bfmen/luci-app-wolplus package/luci-app-wolplus
-git clone https://github.com/immortalwrt/homeproxy package/luci-app-homeproxy
+#git clone https://github.com/immortalwrt/homeproxy package/luci-app-homeproxy
 #git clone https://github.com/szwjp/homeproxy package/szwjp-homeproxy
 git clone https://github.com/whzhni1/luci-app-harbor-file package/luci-app-harbor-file
 #git clone https://github.com/timsaya/openwrt-bandix package/openwrt-bandix
