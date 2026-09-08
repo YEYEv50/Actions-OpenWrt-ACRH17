@@ -29,7 +29,7 @@ rm -rf feeds/luci/applications/luci-app-dae
 rm -rf feeds/luci/applications/luci-app-daed
 rm -rf feeds/packages/net/dae
 rm -rf feeds/packages/net/daed
-#rm -rf feeds/packages/lang/golang
+rm -rf feeds/packages/lang/golang
 
 #git clone https://github.com/0x676e67/luci-theme-design.git  package/luci-theme-design
 #git clone https://github.com/0x676e67/luci-app-design-config.git package/luci-app-design-config
@@ -38,7 +38,7 @@ git clone https://github.com/eamonxg/luci-theme-aurora package/luci-theme-aurora
 git clone https://github.com/eamonxg/luci-app-aurora-config package/luci-app-aurora-config
 #git clone https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
 #git clone https://github.com/jerrykuku/luci-app-argon-config.git package/luci-app-argon-config
-#git clone https://github.com/sbwml/packages_lang_golang -b 26.x feeds/packages/lang/golang
+git clone https://github.com/sbwml/packages_lang_golang -b 27.x feeds/packages/lang/golang
 git clone https://github.com/chenmozhijin/luci-app-socat package/luci-app-socat
 git clone https://github.com/bfmen/luci-app-wolplus package/luci-app-wolplus
 #git clone https://github.com/timsaya/openwrt-bandix package/openwrt-bandix
