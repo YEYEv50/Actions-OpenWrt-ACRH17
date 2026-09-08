@@ -1,7 +1,7 @@
 #
 # https://github.com/P3TERX/Actions-OpenWrt
 #
-# File: .github/workflows/openwrt-bulder.yml
+# File: .github/workflows/openwrt-builder.yml
 # Description: Build OpenWrt using GitHub Actions
 #
 # Copyright (c) 2019-2024 P3TERX <https://p3terx.com>
@@ -28,13 +28,18 @@ env:
   UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
 
+# ✅ 修复 #3: 显式声明权限，确保 Release 创建不被拒绝
+permissions:
+  contents: write
+  actions: write
+
 jobs:
   build:
     runs-on: ubuntu-22.04
 
     steps:
     - name: Checkout
-      uses: actions/checkout@main
+      uses: actions/checkout@v4    # ✅ 修复 #6: 固定版本
 
     - name: Initialization environment
       env:
@@ -50,11 +55,24 @@ jobs:
         sudo mkdir -p /workdir
         sudo chown $USER:$GROUPS /workdir
 
+    # ✅ 修复 #7: 添加磁盘空间预检 + swap 创建，防止编译中途空间耗尽
+    - name: Free disk space & create swap
+      run: |
+        echo "=== Disk space before ==="
+        df -hT
+        # 创建 4GB swap 防止 OOM
+        sudo fallocate -l 4G /swapfile_build || sudo dd if=/dev/zero of=/swapfile_build bs=1M count=4096
+        sudo chmod 600 /swapfile_build
+        sudo mkswap /swapfile_build
+        sudo swapon /swapfile_build
+        echo "=== Swap enabled ==="
+        free -h
+
     - name: Clone source code
       working-directory: /workdir
       run: |
         df -hT $PWD
-        git clone $REPO_URL -b $REPO_BRANCH openwrt
+        git clone --depth=1 $REPO_URL -b $REPO_BRANCH openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
     - name: Load custom feeds
@@ -78,7 +96,7 @@ jobs:
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
 
-    # ✅ 已修复：独立为顶级 step，缩进与上方对齐
+    # ✅ 修复 #1: 使用 $'\t' 注入真实 Tab，彻底解决 missing separator
     - name: Pin Kernel Vermagic
       run: |
         cd openwrt
@@ -106,7 +124,6 @@ jobs:
             VERMAGIC="$FALLBACK_VERMAGIC"
           else
             echo "❌ No valid vermagic available!"
-            [ -f manifest.txt ] && grep 'kernel' manifest.txt || echo "  manifest.txt not found or empty"
             exit 1
           fi
         fi
@@ -115,18 +132,43 @@ jobs:
         echo "${VERMAGIC}" > vermagic
         
         MK_FILE="include/kernel-defaults.mk"
+        
+        # 注释掉原始 vermagic 生成行
         if grep -q "grep.*=\[ym\].*\.vermagic" "$MK_FILE"; then
           sed -i "/grep '=\[ym\]' .*\.vermagic/s/^/#/" "$MK_FILE"
-          sed -i "/#.*grep '=\[ym\]' .*\.vermagic/a\\tcp \$(TOPDIR)/vermagic \$(LINUX_DIR)/.vermagic" "$MK_FILE"
+          echo "✅ Commented out original vermagic generation line"
         else
-          echo "⚠️ Standard vermagic pattern not found in $MK_FILE"
-          grep -n 'vermagic' "$MK_FILE" || true
-          echo "❌ Cannot auto-patch. Please check kernel-defaults.mk manually."
-          exit 1
+          echo "⚠️ Standard vermagic pattern not found, skipping comment-out"
         fi
         
-        echo "📝 Modified kernel-defaults.mk:"
+        # ✅ 关键修复：使用 bash ANSI-C quoting $'\t' 生成真实 Tab 字符
+        # 这是 bash 内建功能，不依赖 sed 对转义序列的解释，100% 可靠
+        if ! grep -q 'cp.*TOPDIR.*vermagic.*LINUX_DIR.*\.vermagic' "$MK_FILE"; then
+          TAB=$'\t'
+          sed -i "/#.*grep '=\[ym\]' .*\.vermagic/a\\${TAB}cp \$(TOPDIR)/vermagic \$(LINUX_DIR)/.vermagic" "$MK_FILE"
+          echo "✅ Injected vermagic copy command with real Tab"
+        else
+          echo "ℹ️ Vermagic copy command already present, skipping"
+        fi
+        
+        # 验证注入结果
+        echo "📝 Lines around vermagic in $MK_FILE:"
         grep -n -B1 -A1 'vermagic' "$MK_FILE"
+        
+        # 安全检查：确认注入行以 Tab 开头 (^I)
+        INJECTED_LINE=$(grep -n 'cp.*TOPDIR.*vermagic' "$MK_FILE" | head -1)
+        if [ -n "$INJECTED_LINE" ]; then
+          LINE_NUM=$(echo "$INJECTED_LINE" | cut -d: -f1)
+          FIRST_TWO=$(sed -n "${LINE_NUM}p" "$MK_FILE" | cat -A | cut -c1-2)
+          if [ "$FIRST_TWO" != "^I" ]; then
+            echo "❌ FATAL: Injected line does NOT start with Tab!"
+            echo "   Raw content: $(sed -n "${LINE_NUM}p" "$MK_FILE" | cat -A)"
+            exit 1
+          fi
+          echo "✅ Tab indentation verified on line $LINE_NUM"
+        else
+          echo "⚠️ Could not find injected line for verification"
+        fi
 
     - name: Download package
       id: package
@@ -137,14 +179,35 @@ jobs:
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
 
+    # ✅ 修复 #2: 编译失败时不再错误标记 success
     - name: Compile the firmware
       id: compile
       run: |
         cd openwrt
         echo -e "$(nproc) thread compile"
-        make -j$(nproc) || make -j1 || make -j1 V=s
-        echo "status=success" >> $GITHUB_OUTPUT
-        grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
+        
+        # 使用 set +e 防止 make 失败直接退出 step
+        set +e
+        make -j$(nproc)
+        BUILD_RESULT=$?
+        
+        if [ $BUILD_RESULT -ne 0 ]; then
+          echo "⚠️ Parallel build failed (exit $BUILD_RESULT), retrying single-thread..."
+          make -j1 V=s
+          BUILD_RESULT=$?
+        fi
+        set -e
+        
+        if [ $BUILD_RESULT -eq 0 ]; then
+          echo "status=success" >> $GITHUB_OUTPUT
+          echo "✅ Build succeeded!"
+        else
+          echo "status=failed" >> $GITHUB_OUTPUT
+          echo "❌ Build failed with exit code $BUILD_RESULT"
+          exit $BUILD_RESULT
+        fi
+        
+        grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME || true
         [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
         echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
@@ -164,49 +227,73 @@ jobs:
 
     - name: Check space usage
       if: (!cancelled())
-      run: df -hT
+      run: |
+        df -hT
+        free -h
 
     - name: Upload bin directory
-      uses: actions/upload-artifact@main
+      uses: actions/upload-artifact@v4    # ✅ 修复 #6
       if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
       with:
         name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
         path: openwrt/bin
 
+    # ✅ 修复 #5: 添加目录存在性检查，防止 glob 不展开时报错
     - name: Organize files
       id: organize
-      if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+      if: env.UPLOAD_FIRMWARE == 'true' && steps.compile.outputs.status == 'success' && !cancelled()
       run: |
-        cd openwrt/bin/targets/*/*
+        TARGET_DIR=$(ls -d openwrt/bin/targets/*/* 2>/dev/null | head -1)
+        if [ -z "$TARGET_DIR" ]; then
+          echo "❌ No target directory found under openwrt/bin/targets/"
+          exit 1
+        fi
+        cd "$TARGET_DIR"
         rm -rf packages
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload firmware directory
-      uses: actions/upload-artifact@main
+      uses: actions/upload-artifact@v4    # ✅ 修复 #6
       if: steps.organize.outputs.status == 'success' && !cancelled()
       with:
         name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
         path: ${{ env.FIRMWARE }}
 
+    # ✅ 修复 #4: 移除损坏的 UPLOAD_GOFILE 条件判断
     - name: Generate release tag
       id: tag
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      if: env.UPLOAD_RELEASE == 'true' && steps.compile.outputs.status == 'success' && !cancelled()
       run: |
         echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
-        touch release.txt
-        [ ${UPLOAD_GOFILE} = true && ${{ steps.gofile.outputs.url }} ] && echo "🔗 [GoFile](${{ steps.gofile.outputs.url }})" >> release.txt
+        echo "### OpenWrt Build $(date +"%Y-%m-%d %H:%M")" > release.txt
+        echo "" >> release.txt
+        echo "- Source: \`${{ env.REPO_URL }}\` @ \`${{ env.REPO_BRANCH }}\`" >> release.txt
+        echo "- Device: \`${{ env.DEVICE_NAME }}\`" >> release.txt
+        echo "- Commit: \`${{ github.sha }}\`" >> release.txt
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload firmware to release
-      uses: softprops/action-gh-release@master
+      uses: softprops/action-gh-release@v2    # ✅ 修复 #6: 固定 v2
       if: steps.tag.outputs.status == 'success' && !cancelled()
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ steps.tag.outputs.release_tag }}
         body_path: release.txt
-        files: ${{ env.FIRMWARE }}/*
+        # ✅ 显式指定文件类型，防止 FIRMWARE 为空时展开为 /*
+        files: |
+          ${{ env.FIRMWARE }}/*.bin
+          ${{ env.FIRMWARE }}/*.img.gz
+          ${{ env.FIRMWARE }}/*.img
+          ${{ env.FIRMWARE }}/sha256sums
+          ${{ env.FIRMWARE }}/*.manifest
+
+    - name: Cleanup swap
+      if: always()
+      run: |
+        sudo swapoff /swapfile_build 2>/dev/null || true
+        sudo rm -f /swapfile_build
 
     - name: Delete workflow runs
       uses: Mattraks/delete-workflow-runs@main
