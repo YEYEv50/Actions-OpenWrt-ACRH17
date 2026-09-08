@@ -1,13 +1,7 @@
 #
 # https://github.com/P3TERX/Actions-OpenWrt
-#
-# File: .github/workflows/openwrt-bulder.yml
-# Description: Build OpenWrt using GitHub Actions
-#
-# Copyright (c) 2019-2024 P3TERX <https://p3terx.com>
-#
-# This is free software, licensed under the MIT License.
-# See /LICENSE for more information.
+# File: .github/workflows/openwrt-builder.yml
+# Description: Build OpenWrt using GitHub Actions (Strict Vermagic Mode)
 #
 
 name: OpenWrt Builder
@@ -28,13 +22,17 @@ env:
   UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
 
+permissions:
+  contents: write
+  actions: write
+
 jobs:
   build:
     runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout
-        uses: actions/checkout@main
+        uses: actions/checkout@v4
 
       - name: Initialization environment
         env:
@@ -54,7 +52,7 @@ jobs:
         working-directory: /workdir
         run: |
           df -hT $PWD
-          git clone $REPO_URL -b $REPO_BRANCH openwrt
+          git clone --depth=1 $REPO_URL -b $REPO_BRANCH openwrt
           ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
       - name: Load custom feeds
@@ -84,61 +82,109 @@ jobs:
       - name: Install feeds (post-config)
         run: cd openwrt && ./scripts/feeds install -a
 
+      # ✅ 严格模式：无 FALLBACK，获取失败即终止 + 详细调试输出
+      # ✅ 修复 #1: 使用 $'\t' 注入真实 Tab，彻底解决 missing separator
       - name: Pin Kernel Vermagic
         run: |
           cd openwrt
-          
-          # ====== 配置区（无兜底） ======
+
+          # ====== 配置区（严格模式，无兜底） ======
           OPENWRT_VERSION="25.12-SNAPSHOT"
           TARGET_PATH="ipq40xx"
           ARCH="generic"
           BASE_URL="https://downloads.immortalwrt.org/releases/${OPENWRT_VERSION}/targets/${TARGET_PATH}/${ARCH}"
-          # ==============================
-          
+          # ==========================================
+
           echo "🔍 Fetching SNAPSHOT manifest index from: ${BASE_URL}/"
-          
-          MANIFEST_FILE=""
-          if curl -sfL --retry 3 --connect-timeout 15 "${BASE_URL}/" -o index.html 2>/dev/null; then
-            MANIFEST_FILE=$(grep -oE "immortalwrt-${OPENWRT_VERSION}-r[0-9]+-[0-9a-f]+-${ARCH}\.manifest" index.html | sort -V | tail -1)
+
+          # Step 1: 获取索引页
+          if ! curl -sfL --retry 3 --connect-timeout 15 "${BASE_URL}/" -o index.html 2>/dev/null; then
+            echo "❌ FATAL: Cannot download snapshot index page!"
+            echo "   URL: ${BASE_URL}/"
+            echo "   Please verify the URL is accessible and the target exists."
+            exit 1
           fi
-          
+
+          # Step 2: 从索引页提取最新 manifest 文件名
+          MANIFEST_FILE=$(grep -oE "immortalwrt-${OPENWRT_VERSION}-r[0-9]+-[0-9a-f]+-${ARCH}\.manifest" index.html | sort -V | tail -1)
+
           if [ -z "$MANIFEST_FILE" ]; then
-            echo "❌ Failed to find manifest in snapshot index!"
-            echo "💡 Available manifests (last 10):"
-            [ -f index.html ] && grep -oE "immortalwrt-.*\.manifest" index.html | sort -V | tail -10 || echo "  (index.html not downloaded)"
-            echo "💡 Check URL manually: ${BASE_URL}/"
+            echo "❌ FATAL: No matching manifest found in snapshot index!"
+            echo "   Expected pattern: immortalwrt-${OPENWRT_VERSION}-r*-*-${ARCH}.manifest"
+            echo ""
+            echo "💡 All .manifest files found in index (last 15):"
+            grep -oE 'immortalwrt-[^"]+\.manifest' index.html | sort -V | tail -15 || echo "   (none found)"
+            echo ""
+            echo "💡 Raw index snippet (first 50 lines):"
+            head -50 index.html
             exit 1
           fi
-          
+
           echo "📦 Found latest manifest: ${MANIFEST_FILE}"
-          VERMAGIC=""
-          if curl -sfL --retry 3 --connect-timeout 15 "${BASE_URL}/${MANIFEST_FILE}" -o manifest.txt 2>/dev/null; then
-            VERMAGIC=$(grep '^kernel ' manifest.txt | head -1 | awk '{print $3}' | grep -oE '[0-9a-f]{32}$')
-          fi
-          
-          if [ -z "$VERMAGIC" ] || [ ${#VERMAGIC} -ne 32 ]; then
-            echo "❌ Failed to extract valid vermagic from manifest!"
-            echo "💡 Manifest content (kernel lines):"
-            [ -f manifest.txt ] && grep 'kernel' manifest.txt || echo "  (manifest.txt empty or missing)"
+
+          # Step 3: 下载 manifest 并提取 vermagic
+          if ! curl -sfL --retry 3 --connect-timeout 15 "${BASE_URL}/${MANIFEST_FILE}" -o manifest.txt 2>/dev/null; then
+            echo "❌ FATAL: Cannot download manifest file!"
+            echo "   URL: ${BASE_URL}/${MANIFEST_FILE}"
             exit 1
           fi
-          
+
+          VERMAGIC=$(grep '^kernel ' manifest.txt | head -1 | awk '{print $3}' | grep -oE '[0-9a-f]{32}$')
+
+          if [ -z "$VERMAGIC" ] || [ ${#VERMAGIC} -ne 32 ]; then
+            echo "❌ FATAL: Cannot extract valid 32-char hex vermagic from manifest!"
+            echo "   Extracted value: '${VERMAGIC}' (length: ${#VERMAGIC})"
+            echo ""
+            echo "💡 Kernel-related lines in manifest:"
+            grep -i 'kernel' manifest.txt || echo "   (no kernel lines found)"
+            echo ""
+            echo "💡 Full manifest content:"
+            cat manifest.txt
+            exit 1
+          fi
+
           echo "✅ Pinned vermagic: ${VERMAGIC}"
           echo "${VERMAGIC}" > vermagic
-          
+
+          # Step 4: Patch kernel-defaults.mk
           MK_FILE="include/kernel-defaults.mk"
-          if grep -q "grep.*=\[ym\].*\.vermagic" "$MK_FILE"; then
-            sed -i "/grep '=\[ym\]' .*\.vermagic/s/^/#/" "$MK_FILE"
-            sed -i "/#.*grep '=\[ym\]' .*\.vermagic/a\\tcp \$(TOPDIR)/vermagic \$(LINUX_DIR)/.vermagic" "$MK_FILE"
-          else
-            echo "⚠️ Standard vermagic pattern not found in $MK_FILE"
-            grep -n 'vermagic' "$MK_FILE" || true
-            echo "❌ Cannot auto-patch kernel-defaults.mk"
+
+          if ! grep -q "grep.*=\[ym\].*\.vermagic" "$MK_FILE"; then
+            echo "❌ FATAL: Standard vermagic pattern not found in $MK_FILE"
+            echo "   This ImmortalWrt version may have changed its kernel build system."
+            echo ""
+            echo "💡 All vermagic-related lines in $MK_FILE:"
+            grep -n 'vermagic' "$MK_FILE" || echo "   (no vermagic references found)"
             exit 1
           fi
-          
-          echo "📝 Modified kernel-defaults.mk:"
+
+          # 注释掉原始生成行
+          sed -i "/grep '=\[ym\]' .*\.vermagic/s/^/#/" "$MK_FILE"
+
+          # ✅ 关键修复：使用 bash ANSI-C quoting $'\t' 注入真实 Tab
+          if ! grep -q 'cp.*TOPDIR.*vermagic.*LINUX_DIR.*\.vermagic' "$MK_FILE"; then
+            TAB=$'\t'
+            sed -i "/#.*grep '=\[ym\]' .*\.vermagic/a\\${TAB}cp \$(TOPDIR)/vermagic \$(LINUX_DIR)/.vermagic" "$MK_FILE"
+            echo "✅ Injected vermagic copy command with real Tab"
+          else
+            echo "ℹ️ Vermagic copy command already present, skipping injection"
+          fi
+
+          # Step 5: 验证注入结果
+          echo "📝 Modified kernel-defaults.mk (vermagic context):"
           grep -n -B1 -A1 'vermagic' "$MK_FILE"
+
+          INJECTED_LINE=$(grep -n 'cp.*TOPDIR.*vermagic' "$MK_FILE" | head -1)
+          if [ -n "$INJECTED_LINE" ]; then
+            LINE_NUM=$(echo "$INJECTED_LINE" | cut -d: -f1)
+            FIRST_TWO=$(sed -n "${LINE_NUM}p" "$MK_FILE" | cat -A | cut -c1-2)
+            if [ "$FIRST_TWO" != "^I" ]; then
+              echo "❌ FATAL: Injected line does NOT start with Tab!"
+              echo "   Raw: $(sed -n "${LINE_NUM}p" "$MK_FILE" | cat -A)"
+              exit 1
+            fi
+            echo "✅ Tab indentation verified on line $LINE_NUM"
+          fi
 
       - name: Download package
         id: package
@@ -149,14 +195,34 @@ jobs:
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
+      # ✅ 修复 #2: 编译失败时正确标记 status=failed 并退出
       - name: Compile the firmware
         id: compile
         run: |
           cd openwrt
           echo -e "$(nproc) thread compile"
-          make -j$(nproc) || make -j1 || make -j1 V=s
-          echo "status=success" >> $GITHUB_OUTPUT
-          grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
+
+          set +e
+          make -j$(nproc)
+          BUILD_RESULT=$?
+
+          if [ $BUILD_RESULT -ne 0 ]; then
+            echo "⚠️ Parallel build failed (exit $BUILD_RESULT), retrying single-thread with verbose..."
+            make -j1 V=s
+            BUILD_RESULT=$?
+          fi
+          set -e
+
+          if [ $BUILD_RESULT -eq 0 ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "✅ Build succeeded!"
+          else
+            echo "status=failed" >> $GITHUB_OUTPUT
+            echo "❌ Build failed with exit code $BUILD_RESULT"
+            exit $BUILD_RESULT
+          fi
+
+          grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME || true
           [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
           echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
@@ -179,7 +245,7 @@ jobs:
         run: df -hT
 
       - name: Upload bin directory
-        uses: actions/upload-artifact@main
+        uses: actions/upload-artifact@v4
         if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
         with:
           name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
@@ -187,38 +253,55 @@ jobs:
 
       - name: Organize files
         id: organize
-        if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+        if: env.UPLOAD_FIRMWARE == 'true' && steps.compile.outputs.status == 'success' && !cancelled()
         run: |
-          cd openwrt/bin/targets/*/*
+          TARGET_DIR=$(ls -d openwrt/bin/targets/*/* 2>/dev/null | head -1)
+          if [ -z "$TARGET_DIR" ]; then
+            echo "❌ No target directory found under openwrt/bin/targets/"
+            exit 1
+          fi
+          cd "$TARGET_DIR"
           rm -rf packages
           echo "FIRMWARE=$PWD" >> $GITHUB_ENV
           echo "status=success" >> $GITHUB_OUTPUT
 
       - name: Upload firmware directory
-        uses: actions/upload-artifact@main
+        uses: actions/upload-artifact@v4
         if: steps.organize.outputs.status == 'success' && !cancelled()
         with:
           name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: ${{ env.FIRMWARE }}
 
+      # ✅ 修复 #4: 移除损坏的 UPLOAD_GOFILE 条件，生成结构化 release notes
       - name: Generate release tag
         id: tag
-        if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+        if: env.UPLOAD_RELEASE == 'true' && steps.compile.outputs.status == 'success' && !cancelled()
         run: |
           echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
-          touch release.txt
-          [ ${UPLOAD_GOFILE} = true && ${{ steps.gofile.outputs.url }} ] && echo "🔗 [GoFile](${{ steps.gofile.outputs.url }})" >> release.txt
+          {
+            echo "### OpenWrt Build $(date +"%Y-%m-%d %H:%M")"
+            echo ""
+            echo "- Source: \`${{ env.REPO_URL }}\` @ \`${{ env.REPO_BRANCH }}\`"
+            echo "- Device: \`${{ env.DEVICE_NAME }}\`"
+            echo "- Commit: \`${{ github.sha }}\`"
+            echo "- Vermagic: \`$(cat openwrt/vermagic 2>/dev/null || echo 'N/A')\`"
+          } > release.txt
           echo "status=success" >> $GITHUB_OUTPUT
 
       - name: Upload firmware to release
-        uses: softprops/action-gh-release@master
+        uses: softprops/action-gh-release@v2
         if: steps.tag.outputs.status == 'success' && !cancelled()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.tag.outputs.release_tag }}
           body_path: release.txt
-          files: ${{ env.FIRMWARE }}/*
+          files: |
+            ${{ env.FIRMWARE }}/*.bin
+            ${{ env.FIRMWARE }}/*.img.gz
+            ${{ env.FIRMWARE }}/*.img
+            ${{ env.FIRMWARE }}/sha256sums
+            ${{ env.FIRMWARE }}/*.manifest
 
       - name: Delete workflow runs
         uses: Mattraks/delete-workflow-runs@main
