@@ -82,49 +82,44 @@ jobs:
       - name: Install feeds (post-config)
         run: cd openwrt && ./scripts/feeds install -a
 
-      # ✅ 严格模式：无 FALLBACK，获取失败即终止 + 详细调试输出
-      # ✅ 修复 #1: 使用 $'\t' 注入真实 Tab，彻底解决 missing separator
-      # ✅ 修复 #5: grep 添加 -i 忽略大小写，兼容服务器小写 snapshot 文件名
+      # ✅ 最终修复版：分离目录路径(大写)与文件名匹配(小写)，彻底解决大小写不一致问题
       - name: Pin Kernel Vermagic
         run: |
           cd openwrt
 
-          # ====== 配置区（严格模式，无兜底） ======
-          OPENWRT_VERSION="25.12-SNAPSHOT"
+          # ====== 配置区 ======
+          # ✅ 关键修复：文件名使用小写 snapshot，目录路径保持大写 SNAPSHOT
+          OPENWRT_VERSION_LOWER="25.12-snapshot"
+          OPENWRT_VERSION_DIR="25.12-SNAPSHOT"
           TARGET_PATH="ipq40xx"
           ARCH="generic"
-          BASE_URL="https://downloads.immortalwrt.org/releases/${OPENWRT_VERSION}/targets/${TARGET_PATH}/${ARCH}"
+          BASE_URL="https://downloads.immortalwrt.org/releases/${OPENWRT_VERSION_DIR}/targets/${TARGET_PATH}/${ARCH}"
           # ==========================================
 
-          echo "🔍 Fetching SNAPSHOT manifest index from: ${BASE_URL}/"
+          echo "🔍 Fetching manifest index from: ${BASE_URL}/"
 
           # Step 1: 获取索引页
           if ! curl -sfL --retry 3 --connect-timeout 15 "${BASE_URL}/" -o index.html 2>/dev/null; then
             echo "❌ FATAL: Cannot download snapshot index page!"
             echo "   URL: ${BASE_URL}/"
-            echo "   Please verify the URL is accessible and the target exists."
             exit 1
           fi
 
-          # Step 2: 从索引页提取最新 manifest 文件名
-          # ✅ 修复：添加 -i 参数忽略大小写，服务器实际文件名为小写 snapshot
-          MANIFEST_FILE=$(grep -ioE "immortalwrt-${OPENWRT_VERSION}-r[0-9]+-[0-9a-f]+-${ARCH}\.manifest" index.html | sort -V | tail -1)
+          # Step 2: 提取最新 manifest（使用小写变量 + 宽松匹配）
+          MANIFEST_FILE=$(grep -oE "immortalwrt-${OPENWRT_VERSION_LOWER}-r[0-9]+-[0-9a-f]+-${ARCH}\.manifest" index.html | sort -V | tail -1)
 
           if [ -z "$MANIFEST_FILE" ]; then
-            echo "❌ FATAL: No matching manifest found in snapshot index!"
-            echo "   Expected pattern: immortalwrt-${OPENWRT_VERSION}-r*-*-${ARCH}.manifest"
+            echo "❌ FATAL: No matching manifest found!"
+            echo "   Tried pattern: immortalwrt-${OPENWRT_VERSION_LOWER}-r*-*-${ARCH}.manifest"
             echo ""
-            echo "💡 All .manifest files found in index (last 15):"
+            echo "💡 All .manifest files in index:"
             grep -oE 'immortalwrt-[^"]+\.manifest' index.html | sort -V | tail -15 || echo "   (none found)"
-            echo ""
-            echo "💡 Raw index snippet (first 50 lines):"
-            head -50 index.html
             exit 1
           fi
 
           echo "📦 Found latest manifest: ${MANIFEST_FILE}"
 
-          # Step 3: 下载 manifest 并提取 vermagic
+          # Step 3: 下载并提取 vermagic
           if ! curl -sfL --retry 3 --connect-timeout 15 "${BASE_URL}/${MANIFEST_FILE}" -o manifest.txt 2>/dev/null; then
             echo "❌ FATAL: Cannot download manifest file!"
             echo "   URL: ${BASE_URL}/${MANIFEST_FILE}"
@@ -134,13 +129,8 @@ jobs:
           VERMAGIC=$(grep '^kernel ' manifest.txt | head -1 | awk '{print $3}' | grep -oE '[0-9a-f]{32}$')
 
           if [ -z "$VERMAGIC" ] || [ ${#VERMAGIC} -ne 32 ]; then
-            echo "❌ FATAL: Cannot extract valid 32-char hex vermagic from manifest!"
-            echo "   Extracted value: '${VERMAGIC}' (length: ${#VERMAGIC})"
-            echo ""
-            echo "💡 Kernel-related lines in manifest:"
-            grep -i 'kernel' manifest.txt || echo "   (no kernel lines found)"
-            echo ""
-            echo "💡 Full manifest content:"
+            echo "❌ FATAL: Invalid vermagic extracted: '${VERMAGIC}'"
+            echo "💡 Manifest content:"
             cat manifest.txt
             exit 1
           fi
@@ -153,35 +143,30 @@ jobs:
 
           if ! grep -q "grep.*=\[ym\].*\.vermagic" "$MK_FILE"; then
             echo "❌ FATAL: Standard vermagic pattern not found in $MK_FILE"
-            echo "   This ImmortalWrt version may have changed its kernel build system."
-            echo ""
-            echo "💡 All vermagic-related lines in $MK_FILE:"
-            grep -n 'vermagic' "$MK_FILE" || echo "   (no vermagic references found)"
+            grep -n 'vermagic' "$MK_FILE" || echo "   (no vermagic references)"
             exit 1
           fi
 
-          # 注释掉原始生成行
           sed -i "/grep '=\[ym\]' .*\.vermagic/s/^/#/" "$MK_FILE"
 
-          # ✅ 关键修复：使用 bash ANSI-C quoting $'\t' 注入真实 Tab
           if ! grep -q 'cp.*TOPDIR.*vermagic.*LINUX_DIR.*\.vermagic' "$MK_FILE"; then
             TAB=$'\t'
             sed -i "/#.*grep '=\[ym\]' .*\.vermagic/a\\${TAB}cp \$(TOPDIR)/vermagic \$(LINUX_DIR)/.vermagic" "$MK_FILE"
             echo "✅ Injected vermagic copy command with real Tab"
           else
-            echo "ℹ️ Vermagic copy command already present, skipping injection"
+            echo "ℹ️ Vermagic copy command already present"
           fi
 
-          # Step 5: 验证注入结果
-          echo "📝 Modified kernel-defaults.mk (vermagic context):"
+          echo "📝 Modified kernel-defaults.mk:"
           grep -n -B1 -A1 'vermagic' "$MK_FILE"
 
+          # 验证 Tab 缩进
           INJECTED_LINE=$(grep -n 'cp.*TOPDIR.*vermagic' "$MK_FILE" | head -1)
           if [ -n "$INJECTED_LINE" ]; then
             LINE_NUM=$(echo "$INJECTED_LINE" | cut -d: -f1)
             FIRST_TWO=$(sed -n "${LINE_NUM}p" "$MK_FILE" | cat -A | cut -c1-2)
             if [ "$FIRST_TWO" != "^I" ]; then
-              echo "❌ FATAL: Injected line does NOT start with Tab!"
+              echo "❌ FATAL: Injected line missing Tab indentation!"
               echo "   Raw: $(sed -n "${LINE_NUM}p" "$MK_FILE" | cat -A)"
               exit 1
             fi
@@ -197,7 +182,6 @@ jobs:
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
-      # ✅ 修复 #2: 编译失败时正确标记 status=failed 并退出
       - name: Compile the firmware
         id: compile
         run: |
@@ -274,7 +258,6 @@ jobs:
           name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: ${{ env.FIRMWARE }}
 
-      # ✅ 修复 #4: 移除损坏的 UPLOAD_GOFILE 条件，生成结构化 release notes
       - name: Generate release tag
         id: tag
         if: env.UPLOAD_RELEASE == 'true' && steps.compile.outputs.status == 'success' && !cancelled()
