@@ -84,6 +84,7 @@ jobs:
 
       # ✅ 严格模式：无 FALLBACK，获取失败即终止 + 详细调试输出
       # ✅ 修复 #1: 使用 $'\t' 注入真实 Tab，彻底解决 missing separator
+      # ✅ 修复 #5: grep 添加 -i 忽略大小写，兼容服务器小写 snapshot 文件名
       - name: Pin Kernel Vermagic
         run: |
           cd openwrt
@@ -106,7 +107,8 @@ jobs:
           fi
 
           # Step 2: 从索引页提取最新 manifest 文件名
-          MANIFEST_FILE=$(grep -oE "immortalwrt-${OPENWRT_VERSION}-r[0-9]+-[0-9a-f]+-${ARCH}\.manifest" index.html | sort -V | tail -1)
+          # ✅ 修复：添加 -i 参数忽略大小写，服务器实际文件名为小写 snapshot
+          MANIFEST_FILE=$(grep -ioE "immortalwrt-${OPENWRT_VERSION}-r[0-9]+-[0-9a-f]+-${ARCH}\.manifest" index.html | sort -V | tail -1)
 
           if [ -z "$MANIFEST_FILE" ]; then
             echo "❌ FATAL: No matching manifest found in snapshot index!"
