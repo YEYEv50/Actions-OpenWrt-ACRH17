@@ -27,8 +27,8 @@ sed -i 's/reg = <0x0 0x4ab00000 0x0 0x[0-9a-f]\+>/reg = <0x0 0x4ab00000 0x0 0x01
 rm -rf feeds/luci/applications/luci-app-passwall
 #rm -rf feeds/luci/applications/luci-app-homeproxy
 #rm -rf feeds/packages/lang/golang
-rm -rf feeds/themes/luci-theme-argon
-rm -rf feeds/applications/luci-app-argon-config
+rm -rf feeds/luci/themes/luci-theme-argon
+rm -rf feeds/luci/applications/luci-app-argon-config
 
 
 #git clone https://github.com/0x676e67/luci-theme-design.git  package/luci-theme-design
