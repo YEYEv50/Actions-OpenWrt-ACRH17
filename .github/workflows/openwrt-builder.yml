@@ -1,21 +1,13 @@
 #
-# 基于 https://github.com/P3TERX/Actions-OpenWrt 官方模板改写
-# File: .github/workflows/openwrt-builder.yml
-# Description: Build OpenWrt using GitHub Actions (Ubuntu 24.04)
+# https://github.com/P3TERX/Actions-OpenWrt
 #
-# 本版修订要点：
-#   1. permissions 补 actions: write —— delete-workflow-runs 必需，否则 403 导致 job 失败
-#   2. 所有带显式 if 的步骤都校验 steps.compile.outputs.status，
-#      防止编译失败后仍上传残缺固件 / 发布 Release / 删除旧 Release
-#   3. ccache 真正生效：预建目录、写入 CONFIG_CCACHE=y、编译前设置 CCACHE_DIR
-#   4. 缓存 key 改为 分支+配置文件哈希，避免 run_id 导致每次都新建缓存条目
-#   5. DEVICE_NAME 相关 shell 短路写法改为 if（bash -e 下 `cmd && echo` 返回 1 会误判失败）
-#   6. DIY 脚本缺失时跳过并输出 notice，而不是让整个 step 失败
-#   7. 编译失败自动上传 .config 与 logs，便于排障
-#   8. make defconfig 后校验是否真的选中设备，避免白编默认 target
-#   9. apt 依赖补 bc / liblzma-dev / xz-utils；移除 24.04 不存在的包
-#  10. sources.list.d 过滤放宽为 ubuntu*，避免系统源被误删
-#  11. 增加 concurrency 与 timeout-minutes，避免并发互踩 cache 与 release tag
+# File: .github/workflows/openwrt-bulder.yml
+# Description: Build OpenWrt using GitHub Actions
+#
+# Copyright (c) 2019-2024 P3TERX <https://p3terx.com>
+#
+# This is free software, licensed under the MIT License.
+# See /LICENSE for more information.
 #
 
 name: OpenWrt Builder
@@ -24,16 +16,8 @@ on:
   repository_dispatch:
   workflow_dispatch:
 
-permissions:
-  contents: write
-  actions: write
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
-
 env:
-  REPO_URL: https://github.com/LiBwrt/LibWrt.git
+  REPO_URL: https://github.com/LiBwrt/LibWrt
   REPO_BRANCH: 25.12-nss
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: .config
@@ -46,70 +30,39 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 360
+    runs-on: ubuntu-22.04
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@main
 
     - name: Initialization environment
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
-        # 24.04 的系统源是 /etc/apt/sources.list.d/ubuntu.sources
-        # 只删非 ubuntu* 开头的源，防止系统源被误删导致 apt 无源
-        sudo find /etc/apt/sources.list.d -maxdepth 1 -type f ! -name 'ubuntu*' -delete
-        # 释放 runner 磁盘空间
-        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+        sudo docker image prune --all --force
         sudo -E apt-get -qq update
-        sudo -E apt-get -qq install -y \
-          autoconf automake autopoint bc binutils bison build-essential bzip2 ccache cmake \
-          cpio curl device-tree-compiler file flex g++ gawk gcc-multilib g++-multilib \
-          gettext git gperf haveged help2man intltool libc6-dev-i386 libelf-dev liblzma-dev \
-          libglib2.0-dev libgmp-dev libltdl-dev libmpc-dev libmpfr-dev libncurses-dev \
-          libpython3-dev libreadline-dev libssl-dev libtool ninja-build 7zip patch pkgconf \
-          python3 python3-pyelftools python3-setuptools qemu-utils rsync scons \
-          squashfs-tools subversion swig texinfo uglifyjs unzip wget xz-utils zlib1g-dev zstd
+        sudo -E apt-get -qq install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool lrzsz mkisofs msmtp ninja-build p7zip p7zip-full patch pkgconf python2.7 python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
         sudo -E apt-get -qq autoremove --purge
         sudo -E apt-get -qq clean
         sudo timedatectl set-timezone "$TZ"
         sudo mkdir -p /workdir
-        sudo chown "$USER:$(id -gn)" /workdir
+        sudo chown $USER:$GROUPS /workdir
 
     - name: Clone source code
       working-directory: /workdir
       run: |
-        df -hT "$PWD"
-        git clone --depth 1 "$REPO_URL" -b "$REPO_BRANCH" openwrt
-        ln -sf /workdir/openwrt "$GITHUB_WORKSPACE/openwrt"
-        # 缓存目录必须事先存在，否则 actions/cache 会报 Path Validation Error
-        mkdir -p /workdir/openwrt/dl /workdir/openwrt/.ccache
-
-    # 缓存源码包与 ccache；key 使用分支 + 配置文件哈希，配置不变即可稳定命中
-    - name: Cache downloads and ccache
-      uses: actions/cache@v4
-      with:
-        path: |
-          /workdir/openwrt/dl
-          /workdir/openwrt/.ccache
-        key: openwrt-dl-${{ github.ref_name }}-${{ hashFiles('feeds.conf*', '.config', 'diy-part*.sh') }}
-        restore-keys: |
-          openwrt-dl-${{ github.ref_name }}-
-          openwrt-dl-
+        df -hT $PWD
+        git clone $REPO_URL -b $REPO_BRANCH openwrt
+        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
     - name: Load custom feeds
       run: |
-        if [ -e "$FEEDS_CONF" ]; then
-          mv "$FEEDS_CONF" openwrt/feeds.conf.default
-        fi
-        if [ -f "$GITHUB_WORKSPACE/$DIY_P1_SH" ]; then
-          chmod +x "$GITHUB_WORKSPACE/$DIY_P1_SH"
-          cd openwrt
-          "$GITHUB_WORKSPACE/$DIY_P1_SH"
-        else
-          echo "::notice::$DIY_P1_SH 不存在，跳过"
-        fi
+        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
+        chmod +x $DIY_P1_SH
+        cd openwrt
+        $GITHUB_WORKSPACE/$DIY_P1_SH
 
     - name: Update feeds
       run: cd openwrt && ./scripts/feeds update -a
@@ -119,36 +72,17 @@ jobs:
 
     - name: Load custom configuration
       run: |
-        if [ -e files ]; then
-          mv files openwrt/files
-        fi
-        if [ -e "$CONFIG_FILE" ]; then
-          mv "$CONFIG_FILE" openwrt/.config
-        fi
-        if [ -f "$GITHUB_WORKSPACE/$DIY_P2_SH" ]; then
-          chmod +x "$GITHUB_WORKSPACE/$DIY_P2_SH"
-          cd openwrt
-          "$GITHUB_WORKSPACE/$DIY_P2_SH"
-        else
-          echo "::notice::$DIY_P2_SH 不存在，跳过"
-        fi
+        [ -e files ] && mv files openwrt/files
+        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
+        chmod +x $DIY_P2_SH
+        cd openwrt
+        $GITHUB_WORKSPACE/$DIY_P2_SH
 
     - name: Download package
       id: package
       run: |
         cd openwrt
-        # 确保 ccache 生效：.config 里没有显式配置时补上
-        touch .config
-        sed -i '/^# CONFIG_CCACHE is not set$/d' .config
-        grep -q '^CONFIG_CCACHE=y' .config || echo 'CONFIG_CCACHE=y' >> .config
         make defconfig
-        # 校验是否真的选中了具体设备，避免无 .config 时静默编默认 target
-        if ! grep -qE '^CONFIG_TARGET_[A-Za-z0-9_]+_DEVICE_[A-Za-z0-9_]+=y' .config; then
-          echo "::error::未检测到设备配置（CONFIG_TARGET_*_DEVICE_*=y），请检查 .config 或 $DIY_P2_SH"
-          exit 1
-        fi
-        export CCACHE_DIR="$PWD/.ccache"
-        ccache -M 5G || true
         make download -j8
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
@@ -157,96 +91,68 @@ jobs:
       id: compile
       run: |
         cd openwrt
-        export CCACHE_DIR="$PWD/.ccache"
-        ccache -z || true
-        echo "$(nproc) thread compile"
+        echo -e "$(nproc) thread compile"
         make -j$(nproc) || make -j1 || make -j1 V=s
-        echo "status=success" >> "$GITHUB_OUTPUT"
-        grep '^CONFIG_TARGET.*DEVICE.*=y' .config \
-          | sed -r 's/.*DEVICE_(.*)=y/\1/' \
-          | head -n1 > DEVICE_NAME
-        if [ -s DEVICE_NAME ]; then
-          echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> "$GITHUB_ENV"
-        fi
-        echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> "$GITHUB_ENV"
-        ccache -s || true
+        echo "status=success" >> $GITHUB_OUTPUT
+        grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
+        [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
+        echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
     - name: Check space usage
-      if: always()
+      if: (!cancelled())
       run: df -hT
 
-    - name: Upload logs
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: OpenWrt_logs_${{ github.run_id }}
-        path: |
-          /workdir/openwrt/.config
-          /workdir/openwrt/logs
-        if-no-files-found: ignore
-
     - name: Upload bin directory
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@main
       if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
       with:
         name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-        path: /workdir/openwrt/bin
-        if-no-files-found: ignore
+        path: openwrt/bin
 
     - name: Organize files
       id: organize
-      if: steps.compile.outputs.status == 'success' && env.UPLOAD_FIRMWARE == 'true'
+      if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
       run: |
-        # 用真实路径而非软链接，upload-artifact 不跟随符号链接
-        cd /workdir/openwrt/bin/targets
-        rm -rf */*/packages
-        echo "FIRMWARE=$PWD" >> "$GITHUB_ENV"
-        echo "status=success" >> "$GITHUB_OUTPUT"
+        cd openwrt/bin/targets/*/*
+        rm -rf packages
+        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+        echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload firmware directory
-      uses: actions/upload-artifact@v4
-      if: steps.organize.outputs.status == 'success'
+      uses: actions/upload-artifact@main
+      if: steps.organize.outputs.status == 'success' && !cancelled()
       with:
         name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
         path: ${{ env.FIRMWARE }}
-        if-no-files-found: ignore
 
     - name: Generate release tag
       id: tag
-      if: steps.compile.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true'
+      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
       run: |
-        echo "release_tag=$(date +"%Y.%m.%d-%H%M")-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
-        {
-          echo "自动编译构建"
-          echo ""
-          echo "- 源码: $REPO_URL ($REPO_BRANCH)"
-          echo "- 提交: ${{ github.sha }}"
-          echo "- 编译时间: $(date +"%Y-%m-%d %H:%M:%S %Z")"
-          echo "- 设备: ${DEVICE_NAME#_}"
-        } > release.txt
-        echo "status=success" >> "$GITHUB_OUTPUT"
+        echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
+        touch release.txt
+        [ ${UPLOAD_GOFILE} = true && ${{ steps.gofile.outputs.url }} ] && echo "🔗 [GoFile](${{ steps.gofile.outputs.url }})" >> release.txt
+        echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload firmware to release
-      uses: softprops/action-gh-release@v2
-      if: steps.tag.outputs.status == 'success'
+      uses: softprops/action-gh-release@master
+      if: steps.tag.outputs.status == 'success' && !cancelled()
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ steps.tag.outputs.release_tag }}
         body_path: release.txt
-        files: ${{ env.FIRMWARE }}/*/*/*
-        fail_on_unmatched_files: false
+        files: ${{ env.FIRMWARE }}/*
 
     - name: Delete workflow runs
-      uses: Mattraks/delete-workflow-runs@v2
-      if: (!cancelled())
+      uses: Mattraks/delete-workflow-runs@main
       with:
         retain_days: 0
         keep_minimum_runs: 2
 
     - name: Remove old Releases
-      uses: dev-drprasad/delete-older-releases@v0.3.4
-      if: steps.compile.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true'
+      uses: dev-drprasad/delete-older-releases@master
+      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
       with:
         keep_latest: 3
         delete_tags: true
